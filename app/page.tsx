@@ -53,6 +53,8 @@ export default function Home() {
         <h1 className="text-6xl font-bold mb-6">SafariQuote AI</h1>
         <p className="text-2xl text-gray-400 max-w-2xl mx-auto">
           Instant safari quotes for Kenyan travel companies
+          Stop calculating prices manually. 
+          Generate accurate quotes with hotels, packages, and total cost—instantly.
         </p>
         <div className="mt-10 flex flex-wrap gap-4 justify-center">
           <a href="/dashboard" className="bg-white text-black px-10 py-4 rounded-2xl text-lg font-semibold hover:bg-gray-200">
