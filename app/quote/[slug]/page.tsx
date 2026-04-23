@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { use } from 'react';
 
 const activities = [
   {
@@ -91,11 +92,25 @@ const activities = [
 ];
 
 export default function QuotePage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = React.use(params);
+  const { slug } = use(params);
 
+  const [companyName, setCompanyName] = useState('');
+  const [companyLogo, setCompanyLogo] = useState('');
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [quote, setQuote] = useState<any>(null);
+
+  // Fetch company logo and name
+  useEffect(() => {
+    fetch(`/api/company/info?slug=${slug}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setCompanyName(data.name || slug);
+          setCompanyLogo(data.logo_url || '');
+        }
+      });
+  }, [slug]);
 
   const [formData, setFormData] = useState({
     companySlug: slug,
@@ -167,7 +182,13 @@ export default function QuotePage({ params }: { params: Promise<{ slug: string }
       <div className="max-w-4xl mx-auto px-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-3xl text-center">Get Your Safari Quote</CardTitle>
+            <div className="flex items-center gap-4 mb-6">
+              {companyLogo && <img src={companyLogo} alt="Company Logo" className="h-12 w-auto" />}
+              <div>
+                <CardTitle className="text-3xl">{companyName || slug}</CardTitle>
+                <p className="text-sm text-gray-400">Safari Quote Form</p>
+              </div>
+            </div>
             <div className="text-center text-sm text-gray-500">Step {step} of 7</div>
           </CardHeader>
 
@@ -233,7 +254,7 @@ export default function QuotePage({ params }: { params: Promise<{ slug: string }
               </div>
             )}
 
-            {/* Step 4: Activities - All 13 */}
+            {/* Step 4: Activities */}
             {step === 4 && (
               <div className="space-y-6">
                 <h3 className="font-semibold text-lg">Step 4 of 7 - Activities List</h3>
@@ -361,7 +382,7 @@ export default function QuotePage({ params }: { params: Promise<{ slug: string }
               </div>
             )}
 
-            {/* Bottom Navigation - Only one set */}
+            {/* Bottom Navigation */}
             <div className="flex justify-between pt-8">
               {step > 1 && <Button variant="outline" onClick={prevStep}>← Previous</Button>}
               {step < 7 && <Button onClick={nextStep}>Next →</Button>}

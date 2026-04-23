@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export default function CompanyDashboard() {
   const { user } = useUser();
@@ -17,6 +18,7 @@ export default function CompanyDashboard() {
   const [contactEmail, setContactEmail] = useState('');
   const [sheetId, setSheetId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   // Vehicles
   const [vehicles, setVehicles] = useState([
@@ -39,7 +41,39 @@ export default function CompanyDashboard() {
     }
   }, [organization, user]);
 
-    const saveCompanySettings = async () => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !organization?.id) {
+      toast.error("Please select a file");
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${organization.id}-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('logos')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabaseAdmin.storage
+        .from('logos')
+        .getPublicUrl(fileName);
+
+      setLogoUrl(publicUrlData.publicUrl);
+      toast.success("Logo uploaded successfully!");
+    } catch (err: any) {
+      toast.error("Failed to upload logo: " + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const saveCompanySettings = async () => {
     if (!organization?.id) {
       toast.error("Organization not found");
       return;
@@ -66,6 +100,20 @@ export default function CompanyDashboard() {
 
       if (result.success) {
         toast.success("✅ All settings saved successfully!");
+
+        // Send welcome email
+        if (contactEmail) {
+          await fetch('/api/send-welcome', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              companyName: companyName || organization.name,
+              contactEmail: contactEmail,
+              quoteSlug: (companyName || organization.name).toLowerCase().replace(/[^a-z0-9]/g, '-'),
+              dashboardLink: 'https://safariquote-ai.vercel.app/dashboard'
+            }),
+          });
+        }
       } else {
         toast.error(result.error || "Failed to save");
       }
@@ -121,11 +169,22 @@ export default function CompanyDashboard() {
                 <Label>Company Name</Label>
                 <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
               </div>
-              <div>
-                <Label>Logo URL (optional)</Label>
-                <Input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
-                {logoUrl && <img src={logoUrl} alt="preview" className="mt-4 h-20 object-contain border rounded" />}
-              </div>
+                
+             <div>
+               <Label>Upload Company Logo</Label>
+               <Input 
+               type="file" 
+               accept="image/*" 
+               onChange={handleLogoUpload} 
+               disabled={uploading}
+             />
+             {uploading && <p className="text-sm text-blue-600 mt-1">Uploading logo...</p>}
+             {logoUrl && (
+             <div className="mt-4">
+            <img src={logoUrl} alt="Company Logo" className="h-24 object-contain border rounded" />
+          </div>
+          )}
+             </div>
               <div>
                 <Label>Contact Email</Label>
                 <Input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
