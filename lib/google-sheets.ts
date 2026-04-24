@@ -1,5 +1,17 @@
 import { google } from 'googleapis';
-export async function appendToGoogleSheet(sheetId: string, data: any) {
+
+type SheetAppendPayload = {
+  customerName?: string;
+  customerEmail?: string;
+  destinations?: string[];
+  pax?: number;
+  budget?: string;
+  transport?: string;
+  totalKES?: number;
+  quoteId?: string | null;
+};
+
+export async function appendToGoogleSheet(sheetId: string, data: SheetAppendPayload) {
   const auth = new google.auth.GoogleAuth({
     credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!),
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],

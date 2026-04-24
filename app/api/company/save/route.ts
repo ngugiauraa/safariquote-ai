@@ -1,122 +1,150 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
-import { appendToGoogleSheet } from '@/lib/google-sheets';
-import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+import {
+  buildCompanySlug,
+  normalizeCompanySettings,
+  sanitizeHotels,
+  sanitizeVehicles,
+} from '@/lib/company-settings';
+import { supabaseAdmin } from '@/lib/supabase';
+
+export const runtime = 'nodejs';
+
+function isMissingCustomizationColumn(error: { message?: string } | null) {
+  return Boolean(error?.message?.toLowerCase().includes('customization_settings'));
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.json();
-    const { companySlug, customerName, customerEmail } = formData;
+    const body = await req.json();
+    const clerkOrgId = String(body.clerk_org_id || '').trim();
+    const companyName = String(body.name || '').trim();
+    const logoUrl = String(body.logo_url || '').trim();
+    const contactEmail = String(body.contact_email || '').trim();
+    const sheetId = String(body.sheet_id || '').trim();
 
-    if (!companySlug) {
-      return NextResponse.json({ error: "Company slug is required" }, { status: 400 });
+    if (!clerkOrgId || !companyName) {
+      return NextResponse.json(
+        { error: 'Organization and company name are required.' },
+        { status: 400 }
+      );
     }
 
-    // Fetch company with its vehicles and hotels
-    const { data: company, error } = await supabaseAdmin
-      .from('companies')
-      .select('*, vehicles(*), hotels(*)')
-      .eq('slug', companySlug)
-      .single();
-
-    if (error || !company) {
-      return NextResponse.json({ error: "Company not found" }, { status: 404 });
-    }
-
-    // === PRIORITY 1: Use company's real data if available ===
-    let quote;
-
-    if (company.vehicles && company.vehicles.length > 0 && company.hotels && company.hotels.length > 0) {
-      // Real company data available → build quote from it
-      quote = {
-        itinerary: [
-          { day: 1, title: "Arrival & Transfer", description: "Pickup and transfer using your transport." },
-          { day: 2, title: "Safari / Activity Day", description: "Using your selected vehicles and hotels." },
-          { day: 3, title: "Main Safari Day", description: "Full day activity based on your preferences." },
-          { day: 4, title: "Additional Experiences", description: "More activities or relaxation." },
-          { day: 5, title: "Departure", description: "Transfer back to airport." }
-        ],
-        pricingBreakdown: {
-          transport: company.vehicles[0]?.daily_rate_kes * (formData.stayDays || 5) || 150000,
-          hotels: company.hotels[0]?.nightly_rate_kes * (formData.stayDays || 5) * (formData.pax || 2) || 200000,
-          park_fees: 60000,
-          meals: 40000,
-          total: 450000
-        },
-        totalCostKES: 450000,
-        top3Hotels: company.hotels.slice(0, 3).map((h: any) => ({
-          name: h.name,
-          reason: "Your preferred hotel"
-        })),
-        notes: "Quote generated using your company's real vehicles and hotels."
-      };
-    } else {
-      // === FALLBACK: Company has no data → use Grok (or mock for now) ===
-      // TODO: Replace with real Grok call when you have credits
-      quote = {
-        itinerary: [
-          { day: 1, title: "Arrival in Nairobi", description: "Airport pickup and hotel transfer." },
-          { day: 2, title: "Travel to destination", description: "Scenic drive or flight." },
-          { day: 3, title: "Full day safari / activities", description: "Game drives or chosen experiences." },
-          { day: 4, title: "More adventures", description: "Additional activities based on your request." },
-          { day: 5, title: "Departure", description: "Transfer back to airport." }
-        ],
-        pricingBreakdown: {
-          transport: 140000,
-          hotels: 210000,
-          park_fees: 65000,
-          meals: 40000,
-          total: 455000
-        },
-        totalCostKES: 455000,
-        top3Hotels: [
-          { name: "Mara Serena Safari Lodge", reason: "Excellent location and service" },
-          { name: "Ashnil Mara Camp", reason: "Luxury tents with great views" },
-          { name: "Mara Intrepids", reason: "Family-friendly with good facilities" }
-        ],
-        notes: "Company had no vehicles/hotels data. This is a fallback quote."
-      };
-    }
-
-    // Save quote to database
-    const { data: savedQuote } = await supabaseAdmin
-      .from('quotes')
-      .insert({
-        company_id: company.id,
-        customer_name: customerName,
-        customer_email: customerEmail,
-        request: formData,
-        response: quote,
-        total_kes: quote.totalCostKES
-      })
-      .select()
-      .single();
-
-    // Log to Google Sheet if company has one
-    if (company.sheet_id) {
-      await appendToGoogleSheet(company.sheet_id, {
-        ...formData,
-        totalKES: quote.totalCostKES,
-        quoteId: savedQuote?.id
-      });
-    }
-
-    // Send emails (optional for now)
-    // ... (you can add later)
-
-    return NextResponse.json({ 
-      success: true, 
-      quote,
-      quoteId: savedQuote?.id 
+    const vehicles = sanitizeVehicles(body.vehicles);
+    const hotels = sanitizeHotels(body.hotels);
+    const slug = buildCompanySlug(companyName);
+    const customizationSettings = normalizeCompanySettings(body.customization_settings, {
+      logoUrl,
+      contactEmail,
     });
 
-  } catch (error: any) {
-    console.error("Quote generation error:", error);
-    return NextResponse.json({ 
-      error: "Failed to generate quote", 
-      details: error.message 
-    }, { status: 500 });
+    const companyPayload = {
+      clerk_org_id: clerkOrgId,
+      name: companyName,
+      slug,
+      logo_url: logoUrl || null,
+      contact_email: customizationSettings.contactInfo.email || contactEmail || null,
+      sheet_id: sheetId || null,
+      customization_settings: customizationSettings,
+    };
+
+    const { data: existingCompany } = await supabaseAdmin
+      .from('companies')
+      .select('id')
+      .eq('clerk_org_id', clerkOrgId)
+      .maybeSingle();
+
+    let companyRecord:
+      | {
+          id: string;
+          name: string;
+          slug: string;
+          logo_url?: string | null;
+          contact_email?: string | null;
+          sheet_id?: string | null;
+          customization_settings?: unknown;
+        }
+      | null = null;
+    let warning = '';
+
+    const upsertWithCustomization = await supabaseAdmin
+      .from('companies')
+      .upsert(companyPayload, { onConflict: 'clerk_org_id' })
+      .select('*')
+      .single();
+
+    if (upsertWithCustomization.error && isMissingCustomizationColumn(upsertWithCustomization.error)) {
+      warning =
+        'The companies table is missing the customization_settings column, so advanced branding settings were not saved yet.';
+
+      const { customization_settings: _ignored, ...basePayload } = companyPayload;
+      void _ignored;
+      const fallbackUpsert = await supabaseAdmin
+        .from('companies')
+        .upsert(basePayload, { onConflict: 'clerk_org_id' })
+        .select('*')
+        .single();
+
+      if (fallbackUpsert.error || !fallbackUpsert.data) {
+        throw fallbackUpsert.error || new Error('Failed to save company settings.');
+      }
+
+      companyRecord = fallbackUpsert.data;
+    } else {
+      if (upsertWithCustomization.error || !upsertWithCustomization.data) {
+        throw upsertWithCustomization.error || new Error('Failed to save company settings.');
+      }
+
+      companyRecord = upsertWithCustomization.data;
+    }
+
+    if (!companyRecord) {
+      throw new Error('Company record was not returned after save.');
+    }
+
+    await supabaseAdmin.from('vehicles').delete().eq('company_id', companyRecord.id);
+    if (vehicles.length > 0) {
+      const { error: vehiclesError } = await supabaseAdmin.from('vehicles').insert(
+        vehicles.map((vehicle) => ({
+          company_id: companyRecord.id,
+          ...vehicle,
+        }))
+      );
+
+      if (vehiclesError) throw vehiclesError;
+    }
+
+    await supabaseAdmin.from('hotels').delete().eq('company_id', companyRecord.id);
+    if (hotels.length > 0) {
+      const { error: hotelsError } = await supabaseAdmin.from('hotels').insert(
+        hotels.map((hotel) => ({
+          company_id: companyRecord.id,
+          ...hotel,
+        }))
+      );
+
+      if (hotelsError) throw hotelsError;
+    }
+
+    return NextResponse.json({
+      success: true,
+      created: !existingCompany,
+      warning: warning || undefined,
+      company: {
+        id: companyRecord.id,
+        name: companyRecord.name,
+        slug: companyRecord.slug,
+        logo_url: companyRecord.logo_url || logoUrl || null,
+        contact_email:
+          companyRecord.contact_email || customizationSettings.contactInfo.email || contactEmail,
+        sheet_id: companyRecord.sheet_id || sheetId || null,
+        customization_settings:
+          companyRecord.customization_settings || customizationSettings,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to save company settings.';
+    console.error('Company save error:', error);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
