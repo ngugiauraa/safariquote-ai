@@ -5,7 +5,10 @@ const grok = new OpenAI({
   baseURL: "https://api.x.ai/v1",
 });
 
-export async function generateSafariQuote(company: any, formData: any) {
+export async function generateSafariQuote(
+  company: Record<string, unknown>,
+  formData: Record<string, unknown>
+) {
   const systemPrompt = `You are an expert Kenyan safari planner for ${company.name}.
 Use ONLY the following company rates:
 Vehicles: ${JSON.stringify(company.vehicles || [])}
