@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 
 export default function Home() {
-  const [reviews, setReviews] = useState<Array<{ name: string; rating: number; comment: string }>>([]);
+  const [reviews, setReviews] = useState<any[]>([]);
   const [name, setName] = useState('');
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
@@ -55,19 +54,13 @@ export default function Home() {
         <p className="text-2xl text-gray-400 max-w-2xl mx-auto">
           Instant safari quotes for Kenyan travel companies
         </p>
-        <p className="text-2xl text-gray-400 max-w-2xl mx-auto">
-          Stop calculating prices manually. 
-        </p>  
-        <p className="text-2xl text-gray-400 max-w-2xl mx-auto">
-          Generate accurate quotes with hotels, packages, and total cost—instantly.
-        </p>
         <div className="mt-10 flex flex-wrap gap-4 justify-center">
-          <Link href="/dashboard" className="bg-white text-black px-10 py-4 rounded-2xl text-lg font-semibold hover:bg-gray-200">
+          <a href="/dashboard" className="bg-white text-black px-10 py-4 rounded-2xl text-lg font-semibold hover:bg-gray-200">
             Start 14 Day Free Trial
-          </Link>
-          <Link href="/quote/test-company" className="border border-white px-10 py-4 rounded-2xl text-lg font-semibold hover:bg-white hover:text-black">
+          </a>
+          <a href="/quote/test-company" className="border border-white px-10 py-4 rounded-2xl text-lg font-semibold hover:bg-white hover:text-black">
             Try Demo Quote
-          </Link>
+          </a>
         </div>
       </div>
 
@@ -149,7 +142,7 @@ export default function Home() {
                       <span key={i} className="text-yellow-400 text-xl">★</span>
                     ))}
                   </div>
-                  <p className="italic text-gray-300">&ldquo;{review.comment}&rdquo;</p>
+                  <p className="italic text-gray-300">"{review.comment}"</p>
                   <p className="mt-6 font-semibold">- {review.name}</p>
                 </CardContent>
               </Card>
