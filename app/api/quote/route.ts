@@ -1,9 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { clerkClient } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { appendToGoogleSheet } from '@/lib/google-sheets';
-import { Resend } from 'resend';
+import { getPlanConfig, sanitizePlanTier } from '@/lib/pricing';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+type QuoteHotel = {
+  name: string;
+  reason: string;
+};
+
+type GeneratedQuote = {
+  itinerary: Array<{ day: number; title: string; description: string }>;
+  pricingBreakdown: {
+    transport: number;
+    hotels: number;
+    park_fees: number;
+    meals: number;
+    total: number;
+  };
+  totalCostKES: number;
+  top3Hotels: QuoteHotel[];
+  notes: string;
+};
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Failed to generate quote';
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,7 +39,7 @@ export async function POST(req: NextRequest) {
     // Fetch company with vehicles and hotels
     const { data: company, error } = await supabaseAdmin
       .from('companies')
-      .select('*, vehicles(*), hotels(*)')
+      .select('*, vehicles(*), hotels(*), clerk_org_id')
       .eq('slug', companySlug)
       .single();
 
@@ -25,7 +47,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
 
-    let quote;
+    const clerk = await clerkClient();
+    const organization = await clerk.organizations.getOrganization({
+      organizationId: company.clerk_org_id,
+    });
+    const planTier = sanitizePlanTier(organization.publicMetadata?.planTier as string | undefined);
+    const plan = getPlanConfig(planTier);
+
+    let quote: GeneratedQuote;
 
     // Priority 1: Use company's real data if available
     if (company.vehicles?.length > 0 || company.hotels?.length > 0) {
@@ -45,8 +74,8 @@ export async function POST(req: NextRequest) {
           total: 450000
         },
         totalCostKES: 450000,
-        top3Hotels: company.hotels?.slice(0, 3).map((h: any) => ({
-          name: h.name,
+        top3Hotels: company.hotels?.slice(0, 3).map((hotel: { name: string }) => ({
+          name: hotel.name,
           reason: "Your preferred hotel"
         })) || [],
         notes: "Quote based on your company's real vehicles and hotels."
@@ -93,7 +122,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     // Log to Google Sheet if available
-    if (company.sheet_id) {
+    if (plan.features.googleSheetsSync && company.sheet_id) {
       await appendToGoogleSheet(company.sheet_id, {
         ...formData,
         totalKES: quote.totalCostKES,
@@ -107,8 +136,8 @@ export async function POST(req: NextRequest) {
       quoteId: savedQuote?.id 
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Quote error:", error);
-    return NextResponse.json({ error: "Failed to generate quote", details: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Failed to generate quote", details: getErrorMessage(error) }, { status: 500 });
   }
 }

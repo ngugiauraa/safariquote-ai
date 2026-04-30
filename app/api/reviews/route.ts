@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Failed to save review';
+}
+
 export async function GET() {
   const { data, error } = await supabaseAdmin
     .from('reviews')
@@ -26,7 +30,7 @@ export async function POST(req: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }

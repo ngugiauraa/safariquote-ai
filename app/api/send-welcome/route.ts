@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Failed to send welcome email';
+}
 
 export async function POST(req: NextRequest) {
   try {
+    const resendApiKey = process.env.RESEND_API_KEY;
+
+    if (!resendApiKey) {
+      throw new Error('RESEND_API_KEY is required.');
+    }
+
+    const resend = new Resend(resendApiKey);
     const { companyName, contactEmail, quoteSlug, dashboardLink } = await req.json();
 
     await resend.emails.send({
@@ -30,8 +39,8 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Email error:', error);
-    return NextResponse.json({ error: 'Failed to send welcome email' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }
