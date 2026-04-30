@@ -1,49 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Resend } from 'resend';
 
-import { buildWelcomeEmail } from '@/lib/email';
-import { getResendClient, getResendFromAddress } from '@/lib/resend';
-import { normalizeCompanySettings } from '@/lib/company-settings';
-
-export const runtime = 'nodejs';
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Failed to send welcome email';
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const { companyName, contactEmail, quoteSlug, logoUrl, customizationSettings } =
-      await req.json();
+    const resendApiKey = process.env.RESEND_API_KEY;
 
-    if (!companyName || !contactEmail || !quoteSlug) {
-      return NextResponse.json(
-        { error: 'companyName, contactEmail, and quoteSlug are required.' },
-        { status: 400 }
-      );
+    if (!resendApiKey) {
+      throw new Error('RESEND_API_KEY is required.');
     }
 
-    const settings = normalizeCompanySettings(customizationSettings, {
-      logoUrl,
-      contactEmail,
-    });
+    const resend = new Resend(resendApiKey);
+    const { companyName, contactEmail, quoteSlug, dashboardLink } = await req.json();
 
-    const resend = getResendClient();
-    const response = await resend.emails.send({
-      from: getResendFromAddress(),
-      to: [contactEmail],
+    await resend.emails.send({
+      from: 'SafariQuote AI <quotes@safariquote-ai.vercel.app>',
+      to: contactEmail,
       subject: `Welcome to SafariQuote AI - ${companyName}`,
-      html: buildWelcomeEmail({
-        companyName,
-        companySlug: quoteSlug,
-        logoUrl,
-        settings,
-      }),
+      html: `
+        <h1>Welcome to SafariQuote AI!</h1>
+        <p>Dear ${companyName} team,</p>
+        <p>Thank you for joining. Your company is now set up.</p>
+        
+        <p><strong>Your Dashboard:</strong><br>
+        <a href="${dashboardLink}">${dashboardLink}</a></p>
+        
+        <p><strong>Your Customer Quote Link:</strong><br>
+        <a href="https://safariquote-ai.vercel.app/quote/${quoteSlug}">https://safariquote-ai.vercel.app/quote/${quoteSlug}</a></p>
+        
+        <p>Your customers can now get instant quotes using your own vehicles and hotels.</p>
+        
+        <p>If you need any help, just reply to this email.</p>
+        <p>Best regards,<br>The SafariQuote AI Team</p>
+      `
     });
 
-    if (response.error) {
-      throw new Error(response.error.message);
-    }
-
-    return NextResponse.json({ success: true, id: response.data?.id || null });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to send welcome email.';
-    console.error('Welcome email error:', error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  } catch (error: unknown) {
+    console.error('Email error:', error);
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }

@@ -1,150 +1,139 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-import {
-  buildCompanySlug,
-  normalizeCompanySettings,
-  sanitizeHotels,
-  sanitizeVehicles,
-} from '@/lib/company-settings';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getPlanConfig } from '@/lib/pricing';
+import { getOrganizationBillingState, updateOrganizationMetadata } from '@/lib/billing';
 
-export const runtime = 'nodejs';
+function slugifyCompanyName(name: string) {
+  return (name || 'company')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'company';
+}
 
-function isMissingCustomizationColumn(error: { message?: string } | null) {
-  return Boolean(error?.message?.toLowerCase().includes('customization_settings'));
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Failed to save company';
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const clerkOrgId = String(body.clerk_org_id || '').trim();
-    const companyName = String(body.name || '').trim();
-    const logoUrl = String(body.logo_url || '').trim();
-    const contactEmail = String(body.contact_email || '').trim();
-    const sheetId = String(body.sheet_id || '').trim();
+    const { clerk_org_id, name, logo_url, contact_email, sheet_id, vehicles, hotels, themeColor } = body;
 
-    if (!clerkOrgId || !companyName) {
-      return NextResponse.json(
-        { error: 'Organization and company name are required.' },
-        { status: 400 }
-      );
+    if (!clerk_org_id) {
+      return NextResponse.json({ error: 'Missing organization ID' }, { status: 400 });
     }
 
-    const vehicles = sanitizeVehicles(body.vehicles);
-    const hotels = sanitizeHotels(body.hotels);
-    const slug = buildCompanySlug(companyName);
-    const customizationSettings = normalizeCompanySettings(body.customization_settings, {
-      logoUrl,
-      contactEmail,
+    const { state } = await getOrganizationBillingState(clerk_org_id);
+    const plan = getPlanConfig(state.planTier);
+    const normalizedThemeColor = plan.features.customColorPalette && typeof themeColor === 'string' && themeColor
+      ? themeColor
+      : '#0f766e';
+
+    await updateOrganizationMetadata(clerk_org_id, {
+      publicMetadata: {
+        themeColor: normalizedThemeColor,
+      },
     });
 
-    const companyPayload = {
-      clerk_org_id: clerkOrgId,
-      name: companyName,
-      slug,
-      logo_url: logoUrl || null,
-      contact_email: customizationSettings.contactInfo.email || contactEmail || null,
-      sheet_id: sheetId || null,
-      customization_settings: customizationSettings,
-    };
-
-    const { data: existingCompany } = await supabaseAdmin
+    const { data: existingCompany, error: existingCompanyError } = await supabaseAdmin
       .from('companies')
-      .select('id')
-      .eq('clerk_org_id', clerkOrgId)
+      .select('id, slug')
+      .eq('clerk_org_id', clerk_org_id)
       .maybeSingle();
 
-    let companyRecord:
-      | {
-          id: string;
-          name: string;
-          slug: string;
-          logo_url?: string | null;
-          contact_email?: string | null;
-          sheet_id?: string | null;
-          customization_settings?: unknown;
-        }
-      | null = null;
-    let warning = '';
+    if (existingCompanyError) {
+      throw existingCompanyError;
+    }
 
-    const upsertWithCustomization = await supabaseAdmin
+    const slug = existingCompany?.slug || slugifyCompanyName(name || 'company');
+
+    const { error: companyError } = await supabaseAdmin
       .from('companies')
-      .upsert(companyPayload, { onConflict: 'clerk_org_id' })
-      .select('*')
+      .upsert({
+        clerk_org_id,
+        slug,
+        name: name || 'My Safari Company',
+        logo_url: plan.features.logoOnForm ? logo_url || null : null,
+        contact_email: contact_email || null,
+        sheet_id: plan.features.googleSheetsSync ? sheet_id || null : null,
+      }, {
+        onConflict: 'clerk_org_id',
+      });
+
+    if (companyError) {
+      throw companyError;
+    }
+
+    const { data: company, error: companyLookupError } = await supabaseAdmin
+      .from('companies')
+      .select('id, slug')
+      .eq('clerk_org_id', clerk_org_id)
       .single();
 
-    if (upsertWithCustomization.error && isMissingCustomizationColumn(upsertWithCustomization.error)) {
-      warning =
-        'The companies table is missing the customization_settings column, so advanced branding settings were not saved yet.';
+    if (companyLookupError || !company) {
+      throw companyLookupError || new Error('Company not found after upsert');
+    }
 
-      const { customization_settings: _ignored, ...basePayload } = companyPayload;
-      void _ignored;
-      const fallbackUpsert = await supabaseAdmin
-        .from('companies')
-        .upsert(basePayload, { onConflict: 'clerk_org_id' })
-        .select('*')
-        .single();
+    if (Array.isArray(vehicles)) {
+      const { error: vehicleDeleteError } = await supabaseAdmin
+        .from('vehicles')
+        .delete()
+        .eq('company_id', company.id);
 
-      if (fallbackUpsert.error || !fallbackUpsert.data) {
-        throw fallbackUpsert.error || new Error('Failed to save company settings.');
+      if (vehicleDeleteError) {
+        throw vehicleDeleteError;
       }
 
-      companyRecord = fallbackUpsert.data;
-    } else {
-      if (upsertWithCustomization.error || !upsertWithCustomization.data) {
-        throw upsertWithCustomization.error || new Error('Failed to save company settings.');
+      if (vehicles.length > 0) {
+        const vehicleRows = vehicles.map((vehicle: { type?: string; daily_rate_kes?: number }) => ({
+          company_id: company.id,
+          type: vehicle.type || 'vehicle',
+          daily_rate_kes: vehicle.daily_rate_kes || 0,
+        }));
+
+        const { error: vehicleInsertError } = await supabaseAdmin.from('vehicles').insert(vehicleRows);
+
+        if (vehicleInsertError) {
+          throw vehicleInsertError;
+        }
+      }
+    }
+
+    if (Array.isArray(hotels)) {
+      const { error: hotelDeleteError } = await supabaseAdmin
+        .from('hotels')
+        .delete()
+        .eq('company_id', company.id);
+
+      if (hotelDeleteError) {
+        throw hotelDeleteError;
       }
 
-      companyRecord = upsertWithCustomization.data;
-    }
+      if (hotels.length > 0) {
+        const hotelRows = hotels.map((hotel: { destination?: string; name?: string; nightly_rate_kes?: number }) => ({
+          company_id: company.id,
+          destination: hotel.destination || 'Destination',
+          name: hotel.name || 'Hotel',
+          nightly_rate_kes: hotel.nightly_rate_kes || 0,
+        }));
 
-    if (!companyRecord) {
-      throw new Error('Company record was not returned after save.');
-    }
+        const { error: hotelInsertError } = await supabaseAdmin.from('hotels').insert(hotelRows);
 
-    await supabaseAdmin.from('vehicles').delete().eq('company_id', companyRecord.id);
-    if (vehicles.length > 0) {
-      const { error: vehiclesError } = await supabaseAdmin.from('vehicles').insert(
-        vehicles.map((vehicle) => ({
-          company_id: companyRecord.id,
-          ...vehicle,
-        }))
-      );
-
-      if (vehiclesError) throw vehiclesError;
-    }
-
-    await supabaseAdmin.from('hotels').delete().eq('company_id', companyRecord.id);
-    if (hotels.length > 0) {
-      const { error: hotelsError } = await supabaseAdmin.from('hotels').insert(
-        hotels.map((hotel) => ({
-          company_id: companyRecord.id,
-          ...hotel,
-        }))
-      );
-
-      if (hotelsError) throw hotelsError;
+        if (hotelInsertError) {
+          throw hotelInsertError;
+        }
+      }
     }
 
     return NextResponse.json({
       success: true,
-      created: !existingCompany,
-      warning: warning || undefined,
-      company: {
-        id: companyRecord.id,
-        name: companyRecord.name,
-        slug: companyRecord.slug,
-        logo_url: companyRecord.logo_url || logoUrl || null,
-        contact_email:
-          companyRecord.contact_email || customizationSettings.contactInfo.email || contactEmail,
-        sheet_id: companyRecord.sheet_id || sheetId || null,
-        customization_settings:
-          companyRecord.customization_settings || customizationSettings,
-      },
+      slug: company.slug,
+      isNewCompany: !existingCompany,
+      planTier: state.planTier,
     });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to save company settings.';
-    console.error('Company save error:', error);
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (error: unknown) {
+    console.error('Save company error:', error);
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }

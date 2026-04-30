@@ -1,25 +1,39 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+function requiredEnv(name: string) {
+  const value = process.env[name];
 
-if (!supabaseUrl) {
-  console.error("❌ Missing NEXT_PUBLIC_SUPABASE_URL in .env.local");
-}
-if (!supabaseAnonKey) {
-  console.error("❌ Missing NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local");
-}
-if (!supabaseServiceKey) {
-  console.error("❌ Missing SUPABASE_SERVICE_ROLE_KEY in .env.local");
+  if (!value) {
+    throw new Error(`${name} is required.`);
+  }
+
+  return value;
 }
 
-export const supabase = createClient(
-  supabaseUrl || '',
-  supabaseAnonKey || ''
+function createLazyClient(factory: () => SupabaseClient): SupabaseClient {
+  let client: SupabaseClient | null = null;
+
+  return new Proxy({} as SupabaseClient, {
+    get(_target, prop, receiver) {
+      if (!client) {
+        client = factory();
+      }
+
+      return Reflect.get(client, prop, receiver);
+    },
+  });
+}
+
+export const supabase = createLazyClient(() =>
+  createClient(
+    requiredEnv('NEXT_PUBLIC_SUPABASE_URL'),
+    requiredEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+  ),
 );
 
-export const supabaseAdmin = createClient(
-  supabaseUrl || '',
-  supabaseServiceKey || ''
+export const supabaseAdmin = createLazyClient(() =>
+  createClient(
+    requiredEnv('NEXT_PUBLIC_SUPABASE_URL'),
+    requiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
+  ),
 );

@@ -1,17 +1,17 @@
 import { google } from 'googleapis';
 
-type SheetAppendPayload = {
+type GoogleSheetRow = {
   customerName?: string;
   customerEmail?: string;
   destinations?: string[];
-  pax?: number;
-  budget?: string;
+  pax?: number | string;
+  budget?: number | string;
   transport?: string;
-  totalKES?: number;
-  quoteId?: string | null;
+  totalKES?: number | string;
+  quoteId?: string;
 };
 
-export async function appendToGoogleSheet(sheetId: string, data: SheetAppendPayload) {
+export async function appendToGoogleSheet(sheetId: string, data: GoogleSheetRow) {
   const auth = new google.auth.GoogleAuth({
     credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!),
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],

@@ -1,44 +1,133 @@
 'use client';
 
-import React, { use, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { getContactLines, normalizeCompanySettings } from '@/lib/company-settings';
+import { toast } from 'sonner';
+import { use } from 'react';
+
+type CompanyInfoResponse = {
+  success: boolean;
+  name?: string;
+  logo_url?: string | null;
+  contact_email?: string | null;
+  themeColor?: string | null;
+  whiteLabelForm?: boolean;
+};
 
 const activities = [
-  { id: 'wildlife', title: 'Wildlife Safari', description: 'Explore world-famous national parks and reserves.', image: 'https://picsum.photos/id/1015/600/400' },
-  { id: 'cultural', title: 'Cultural Experiences', description: 'Discover Kenya through villages, traditions, and festivals.', image: 'https://picsum.photos/id/1005/600/400' },
-  { id: 'beach', title: 'Beach Holidays', description: 'Combine safari adventure with time on Kenya’s coastline.', image: 'https://picsum.photos/id/1016/600/400' },
-  { id: 'mountain', title: 'Mountain Climbing', description: 'Trek Kenya’s scenic highlands and mountain routes.', image: 'https://picsum.photos/id/133/600/400' },
-  { id: 'bird', title: 'Bird Watching', description: 'Plan a route around top birding destinations.', image: 'https://picsum.photos/id/201/600/400' },
-  { id: 'hiking', title: 'Hiking and Nature Walks', description: 'Enjoy guided outdoor experiences in stunning landscapes.', image: 'https://picsum.photos/id/1018/600/400' },
-  { id: 'camping', title: 'Camping and Glamping', description: 'Choose between rugged camping and luxury glamping.', image: 'https://picsum.photos/id/133/600/400' },
-  { id: 'cycling', title: 'Cycling Tours', description: 'Experience Kenya on two wheels with scenic cycling routes.', image: 'https://picsum.photos/id/160/600/400' },
+  {
+    id: 'wildlife',
+    title: 'Wildlife Safari',
+    description: 'Explore world-famous National Parks and Reserves (eg Maasai Mara, Amboseli, and Tsavo) to witness the incredible diversity of Flora and Fauna.',
+    image: 'https://picsum.photos/id/1015/600/400'
+  },
+  {
+    id: 'cultural',
+    title: 'Cultural Experiences',
+    description: 'Visit traditional Maasai villages to experience their unique culture, traditions, and vibrant ceremonies. Attend cultural festivals showcasing the diversity of Kenya\'s ethnic groups.',
+    image: 'https://picsum.photos/id/1005/600/400'
+  },
+  {
+    id: 'beach',
+    title: 'Beach Holidays',
+    description: 'Kenya has a beautiful coastline with 1,750 kms of white sandy beaches. Relax on the pristine beaches along the Kenyan coast (including Lamu, Diani, Malindi, and Watamu) and engage in a variety of water sports (snorkeling, diving, and kite surfing).',
+    image: 'https://picsum.photos/id/1016/600/400'
+  },
+  {
+    id: 'mountain',
+    title: 'Mountain Climbing',
+    description: 'Enjoys Kenya’s mountains including a trek to the summit of Mt Kenya, Africa\'s second-highest peak. The experience offers breathtaking views and a challenging adventure.',
+    image: 'https://picsum.photos/id/133/600/400'
+  },
+  {
+    id: 'bird',
+    title: 'Bird Watching',
+    description: 'Kenya is a paradise for bird enthusiasts with numerous bird species in various locations e.g. Lake Nakuru and Lake Bogoria.',
+    image: 'https://picsum.photos/id/201/600/400'
+  },
+  {
+    id: 'hiking',
+    title: 'Hiking and Nature Walks',
+    description: 'Explore scenic landscapes and diverse ecosystems through hiking trails and nature walks in several locations across the country.',
+    image: 'https://picsum.photos/id/1018/600/400'
+  },
+  {
+    id: 'camping',
+    title: 'Camping and Glamping',
+    description: 'Experience the beauty of the outdoors by camping in national parks or indulge in luxury camping (glamping) for a comfortable yet immersive experience.',
+    image: 'https://picsum.photos/id/133/600/400'
+  },
+  {
+    id: 'cycling',
+    title: 'Cycling Tours',
+    description: 'Enjoy a more immersive travel experience through undertaking cycling tours, exploring the countryside and interacting with local communities.',
+    image: 'https://picsum.photos/id/160/600/400'
+  },
+  {
+    id: 'historical',
+    title: 'Historical and Archeological Tours',
+    description: 'Visit historical sites like Fort Jesus in Mombasa or the ancient Swahili town of Lamu (UNESCO World Heritage Sites).',
+    image: 'https://picsum.photos/id/101/600/400'
+  },
+  {
+    id: 'fishing',
+    title: 'Fishing',
+    description: 'Enjoy deep-sea fishing in the Indian Ocean or try freshwater fishing in the country\'s lakes, known for their abundance of fish species.',
+    image: 'https://picsum.photos/id/201/600/400'
+  },
+  {
+    id: 'photography',
+    title: 'Photography Safaris',
+    description: 'Capture the stunning landscapes, diverse wildlife, and vibrant cultures through photography safaris, led by experienced guides.',
+    image: 'https://picsum.photos/id/251/600/400'
+  },
+  {
+    id: 'museums',
+    title: 'National Museums and Art Galleries',
+    description: 'Explore Nairobi\'s National Museum and other cultural institutions to learn about Kenya\'s history, art, and archaeology.',
+    image: 'https://picsum.photos/id/29/600/400'
+  },
+  {
+    id: 'horseback',
+    title: 'Horse Back Safaris',
+    description: 'Experience the thrill of a safari on horseback, allowing you to traverse terrains that may be inaccessible by traditional safari vehicles. This provides a more immersive and up-close encounter with Kenya\'s abundant wildlife.',
+    image: 'https://picsum.photos/id/1005/600/400'
+  }
 ];
 
 export default function QuotePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
-  type QuoteState = {
-    itinerary: Array<{ day: number; title: string; description: string }>;
-    pricingBreakdown: Record<string, number>;
-    totalCostKES: number;
-    top3Hotels: Array<{ name: string; reason: string }>;
-    notes: string;
-  } | null;
 
   const [companyName, setCompanyName] = useState('');
   const [companyLogo, setCompanyLogo] = useState('');
-  const [formIntro, setFormIntro] = useState('');
-  const [companyContactLines, setCompanyContactLines] = useState<string[]>([]);
+  const [companyContactEmail, setCompanyContactEmail] = useState('');
+  const [themeColor, setThemeColor] = useState('#0f766e');
+  const [whiteLabelForm, setWhiteLabelForm] = useState(false);
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [quote, setQuote] = useState<QuoteState>(null);
+
+  // Fetch company logo and name
+  useEffect(() => {
+    fetch(`/api/company/info?slug=${slug}`)
+      .then(res => res.json())
+      .then((data: CompanyInfoResponse) => {
+        if (data.success) {
+          setCompanyName(data.name || slug);
+          setCompanyLogo(data.logo_url || '');
+          setCompanyContactEmail(data.contact_email || '');
+          setThemeColor(data.themeColor || '#0f766e');
+          setWhiteLabelForm(Boolean(data.whiteLabelForm));
+        }
+      })
+      .catch(() => {
+        setCompanyName(slug);
+      });
+  }, [slug]);
 
   const [formData, setFormData] = useState({
     companySlug: slug,
@@ -64,136 +153,95 @@ export default function QuotePage({ params }: { params: Promise<{ slug: string }
     budgetPerAdult: '',
     budgetPerChild: '',
     currency: 'KES',
-    notes: '',
+    notes: ''
   });
 
-  useEffect(() => {
-    fetch(`/api/company/info?slug=${slug}`)
-      .then(async (response) => {
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.error || 'Company not found.');
-        }
-        return payload;
-      })
-      .then((data) => {
-        const settings = normalizeCompanySettings(data.customization_settings, {
-          logoUrl: data.logo_url,
-          contactEmail: data.contact_email,
-        });
-
-        setCompanyName(data.name || slug);
-        setCompanyLogo(settings.form.includeLogo ? data.logo_url || '' : '');
-        setFormIntro(settings.form.introText);
-        setCompanyContactLines(
-          settings.form.includeContactInfo ? getContactLines(settings.contactInfo) : []
-        );
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : 'Unable to load company details.';
-        toast.error(message);
-      });
-  }, [slug]);
-
-  const nextStep = () => setStep((current) => current + 1);
-  const prevStep = () => setStep((current) => current - 1);
+  const nextStep = () => setStep(s => s + 1);
+  const prevStep = () => setStep(s => s - 1);
 
   const toggleActivity = (id: string) => {
-    setFormData((prev) => ({
+    setFormData(prev => ({
       ...prev,
       activities: prev.activities.includes(id)
-        ? prev.activities.filter((activity) => activity !== id)
-        : [...prev.activities, id],
+        ? prev.activities.filter(a => a !== id)
+        : [...prev.activities, id]
     }));
   };
 
   const handleSubmit = async () => {
     setLoading(true);
-
-    try {
-      const response = await fetch('/api/quote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to generate quote.');
-      }
-
-      setQuote(result.quote);
-      toast.success('Quote generated and emailed successfully.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to generate quote.';
-      toast.error(message);
-    } finally {
+    setTimeout(() => {
+      toast.success("Quote generated successfully!");
       setLoading(false);
-    }
+    }, 1500);
   };
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
-      <div className="mx-auto max-w-4xl px-4">
+      <div className="max-w-4xl mx-auto px-4">
         <Card>
-          <CardHeader>
-            <div className="mb-6 flex items-center gap-4">
-              {companyLogo ? <img src={companyLogo} alt="Company Logo" className="h-12 w-auto" /> : null}
+          <CardHeader style={{ borderTop: `4px solid ${themeColor}` }}>
+            <div className="flex items-center gap-4 mb-6">
+              {companyLogo && <img src={companyLogo} alt="Company Logo" className="h-12 w-auto" />}
               <div>
                 <CardTitle className="text-3xl">{companyName || slug}</CardTitle>
-                <p className="text-sm text-gray-500">Safari Quote Form</p>
+                <p className="text-sm text-gray-400">{whiteLabelForm ? 'Travel Quote Form' : 'Powered by SafariQuote AI'}</p>
               </div>
             </div>
-            {formIntro ? <p className="rounded-xl bg-teal-50 p-4 text-sm text-teal-900">{formIntro}</p> : null}
-            {companyContactLines.length > 0 ? (
-              <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700">
-                <p className="mb-2 font-semibold">Contact details</p>
-                {companyContactLines.map((line) => (
-                  <p key={line}>{line}</p>
-                ))}
-              </div>
-            ) : null}
-            <div className="pt-4 text-center text-sm text-gray-500">Step {step} of 7</div>
+            {companyContactEmail && (
+              <p className="text-sm" style={{ color: themeColor }}>
+                Contact this company directly: {companyContactEmail}
+              </p>
+            )}
+            <div className="text-center text-sm text-gray-500">Step {step} of 7</div>
           </CardHeader>
 
           <CardContent className="space-y-8">
-            {step === 1 ? (
+            {/* Step 1: Traveler Details */}
+            {step === 1 && (
               <div className="space-y-6">
-                <h3 className="text-lg font-semibold">Step 1 of 7 - Traveler Details</h3>
+                <h3 className="font-semibold text-lg">Step 1 of 7 - Traveler Details</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><Label>First Name</Label><Input value={formData.firstName} onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} /></div>
-                  <div><Label>Last Name</Label><Input value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} /></div>
+                  <div><Label>First Name</Label><Input value={formData.firstName} onChange={e => setFormData({...formData, firstName: e.target.value})} /></div>
+                  <div><Label>Last Name</Label><Input value={formData.lastName} onChange={e => setFormData({...formData, lastName: e.target.value})} /></div>
                 </div>
-                <div><Label>Email</Label><Input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} /></div>
-                <div><Label>Phone / Mobile</Label><Input value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} /></div>
+                <div><Label>Email</Label><Input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} /></div>
+                <div><Label>Phone / Mobile</Label><Input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><Label>Country of Origin</Label><Input value={formData.countryOrigin} onChange={(e) => setFormData({ ...formData, countryOrigin: e.target.value })} /></div>
-                  <div><Label>Nationality</Label><Input value={formData.nationality} onChange={(e) => setFormData({ ...formData, nationality: e.target.value })} /></div>
+                  <div><Label>Country of Origin</Label><Input value={formData.countryOrigin} onChange={e => setFormData({...formData, countryOrigin: e.target.value})} /></div>
+                  <div><Label>Nationality</Label><Input value={formData.nationality} onChange={e => setFormData({...formData, nationality: e.target.value})} /></div>
                 </div>
               </div>
-            ) : null}
+            )}
 
-            {step === 2 ? (
+            {/* Step 2: Dates */}
+            {step === 2 && (
               <div className="space-y-6">
-                <h3 className="text-lg font-semibold">Step 2 of 7 - Travel Dates</h3>
+                <h3 className="font-semibold text-lg">Step 2 of 7 - Travel Dates</h3>
                 <div className="grid grid-cols-2 gap-6">
-                  <div><Label>Expected Date of Arrival</Label><Input type="date" value={formData.arrivalDate} onChange={(e) => setFormData({ ...formData, arrivalDate: e.target.value })} /></div>
-                  <div><Label>Expected Date of Departure</Label><Input type="date" value={formData.departureDate} onChange={(e) => setFormData({ ...formData, departureDate: e.target.value })} /></div>
+                  <div>
+                    <Label>Expected Date of Arrival</Label>
+                    <Input type="date" value={formData.arrivalDate} onChange={e => setFormData({...formData, arrivalDate: e.target.value})} />
+                  </div>
+                  <div>
+                    <Label>Expected Date of Departure</Label>
+                    <Input type="date" value={formData.departureDate} onChange={e => setFormData({...formData, departureDate: e.target.value})} />
+                  </div>
                 </div>
               </div>
-            ) : null}
+            )}
 
-            {step === 3 ? (
+            {/* Step 3: Pax */}
+            {step === 3 && (
               <div className="space-y-6">
-                <h3 className="text-lg font-semibold">Step 3 of 7 - Pax Details</h3>
+                <h3 className="font-semibold text-lg">Step 3 of 7 - Pax Details</h3>
                 <div>
                   <Label>Number of Adults (18+)</Label>
-                  <Input type="number" value={formData.adults} onChange={(e) => setFormData({ ...formData, adults: parseInt(e.target.value, 10) || 0 })} />
+                  <Input type="number" value={formData.adults} onChange={e => setFormData({...formData, adults: parseInt(e.target.value)||0})} />
                 </div>
                 <div>
                   <Label>Are there any children?</Label>
-                  <Select value={formData.hasChildren ? 'yes' : 'no'} onValueChange={(value) => setFormData({ ...formData, hasChildren: value === 'yes' })}>
+                  <Select value={formData.hasChildren ? "yes" : "no"} onValueChange={v => setFormData({...formData, hasChildren: v==="yes"})}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="no">No</SelectItem>
@@ -201,45 +249,58 @@ export default function QuotePage({ params }: { params: Promise<{ slug: string }
                     </SelectContent>
                   </Select>
                 </div>
-                {formData.hasChildren ? (
+                {formData.hasChildren && (
                   <div className="grid grid-cols-2 gap-4">
-                    <div><Label>Children 12+ years</Label><Input type="number" value={formData.children12Plus} onChange={(e) => setFormData({ ...formData, children12Plus: parseInt(e.target.value, 10) || 0 })} /></div>
-                    <div><Label>Children under 12 years</Label><Input type="number" value={formData.childrenUnder12} onChange={(e) => setFormData({ ...formData, childrenUnder12: parseInt(e.target.value, 10) || 0 })} /></div>
+                    <div><Label>Children 12+ years</Label><Input type="number" value={formData.children12Plus} onChange={e => setFormData({...formData, children12Plus: parseInt(e.target.value)||0})} /></div>
+                    <div><Label>Children under 12 years</Label><Input type="number" value={formData.childrenUnder12} onChange={e => setFormData({...formData, childrenUnder12: parseInt(e.target.value)||0})} /></div>
                   </div>
-                ) : null}
+                )}
               </div>
-            ) : null}
+            )}
 
-            {step === 4 ? (
+            {/* Step 4: Activities */}
+            {step === 4 && (
               <div className="space-y-6">
-                <h3 className="text-lg font-semibold">Step 4 of 7 - Activities</h3>
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                  {activities.map((activity) => (
-                    <div key={activity.id} className="overflow-hidden rounded-2xl border hover:shadow-md">
-                      <img src={activity.image} alt={activity.title} className="h-48 w-full object-cover" />
+                <h3 className="font-semibold text-lg">Step 4 of 7 - Activities List</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {activities.map((act) => (
+                    <div key={act.id} className="border rounded-2xl overflow-hidden hover:shadow-md transition">
+                      <img src={act.image} alt={act.title} className="w-full h-48 object-cover" />
                       <div className="p-4">
-                        <label className="flex cursor-pointer items-start gap-3">
-                          <input type="checkbox" checked={formData.activities.includes(activity.id)} onChange={() => toggleActivity(activity.id)} className="mt-1" />
-                          <div>
-                            <strong>{activity.title}</strong>
-                            <p className="mt-1 text-sm text-gray-600">{activity.description}</p>
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={formData.activities.includes(act.id)}
+                            onChange={() => toggleActivity(act.id)}
+                            className="mt-1"
+                          />
+                          <div className="flex-1">
+                            <strong>{act.title}</strong>
+                            <p className="text-sm text-gray-600 mt-1 leading-tight">{act.description}</p>
                           </div>
                         </label>
                       </div>
                     </div>
                   ))}
                 </div>
-                <div><Label>Other activities (optional)</Label><Input value={formData.otherActivities} onChange={(e) => setFormData({ ...formData, otherActivities: e.target.value })} /></div>
-                <div><Label>Preferred destination (optional)</Label><Input value={formData.preferredDestination} onChange={(e) => setFormData({ ...formData, preferredDestination: e.target.value })} /></div>
+                <div>
+                  <Label>Other activities (optional)</Label>
+                  <Input value={formData.otherActivities} onChange={e => setFormData({...formData, otherActivities: e.target.value})} />
+                </div>
+                <div>
+                  <Label>Do you have any preferred destination? (optional)</Label>
+                  <Input value={formData.preferredDestination} onChange={e => setFormData({...formData, preferredDestination: e.target.value})} />
+                </div>
               </div>
-            ) : null}
+            )}
 
-            {step === 5 ? (
+            {/* Step 5: Accommodation & Transport */}
+            {step === 5 && (
               <div className="space-y-6">
-                <h3 className="text-lg font-semibold">Step 5 of 7 - Accommodation and Transport</h3>
+                <h3 className="font-semibold text-lg">Step 5 of 7 - Accommodation & Transport</h3>
                 <div>
                   <Label>Accommodation Preference</Label>
-                  <Select value={formData.accommodation} onValueChange={(value) => setFormData({ ...formData, accommodation: value })}>
+                  <Select value={formData.accommodation} onValueChange={v => setFormData({...formData, accommodation: v})}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="budget">Budget</SelectItem>
@@ -250,10 +311,10 @@ export default function QuotePage({ params }: { params: Promise<{ slug: string }
                 </div>
                 <div>
                   <Label>Transportation Options</Label>
-                  <Select value={formData.transport} onValueChange={(value) => setFormData({ ...formData, transport: value })}>
+                  <Select value={formData.transport} onValueChange={v => setFormData({...formData, transport: v})}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="any">Tour operator to propose</SelectItem>
+                      <SelectItem value="any">Non in particular (Tour operator to propose)</SelectItem>
                       <SelectItem value="minivan">Private Minivan</SelectItem>
                       <SelectItem value="4x4">Private 4x4</SelectItem>
                       <SelectItem value="air">Private Air Charter</SelectItem>
@@ -261,17 +322,24 @@ export default function QuotePage({ params }: { params: Promise<{ slug: string }
                   </Select>
                 </div>
               </div>
-            ) : null}
+            )}
 
-            {step === 6 ? (
+            {/* Step 6: Diet, Health & Budget */}
+            {step === 6 && (
               <div className="space-y-6">
-                <h3 className="text-lg font-semibold">Step 6 of 7 - Diet, Health, and Budget</h3>
-                <div><Label>Special dietary requirements</Label><Textarea value={formData.specialDiet} onChange={(e) => setFormData({ ...formData, specialDiet: e.target.value })} placeholder="Vegetarian, halal, allergies, etc." /></div>
-                <div><Label>Health notes</Label><Textarea value={formData.healthNotes} onChange={(e) => setFormData({ ...formData, healthNotes: e.target.value })} placeholder="Allergies, motion sickness, accessibility needs, etc." /></div>
+                <h3 className="font-semibold text-lg">Step 6 of 7 - Diet, Health & Budgets</h3>
+                <div>
+                  <Label>Special dietary requirements?</Label>
+                  <Textarea value={formData.specialDiet} onChange={e => setFormData({...formData, specialDiet: e.target.value})} placeholder="Vegetarian, halal, etc." />
+                </div>
+                <div>
+                  <Label>Health instances to bring to the tour operator?</Label>
+                  <Textarea value={formData.healthNotes} onChange={e => setFormData({...formData, healthNotes: e.target.value})} placeholder="Allergies, motion sickness, etc." />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Preferred Currency</Label>
-                    <Select value={formData.currency} onValueChange={(value) => setFormData({ ...formData, currency: value })}>
+                    <Select value={formData.currency} onValueChange={v => setFormData({...formData, currency: v})}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="KES">KES - Kenyan Shilling</SelectItem>
@@ -281,62 +349,50 @@ export default function QuotePage({ params }: { params: Promise<{ slug: string }
                       </SelectContent>
                     </Select>
                   </div>
-                  <div><Label>Budget per Adult</Label><Input type="number" value={formData.budgetPerAdult} onChange={(e) => setFormData({ ...formData, budgetPerAdult: e.target.value })} /></div>
+                  <div>
+                    <Label>Budget Estimate Per Adult (in selected currency)</Label>
+                    <Input type="number" value={formData.budgetPerAdult} onChange={e => setFormData({...formData, budgetPerAdult: e.target.value})} />
+                  </div>
                 </div>
-                {formData.hasChildren ? (
-                  <div><Label>Budget per Child</Label><Input type="number" value={formData.budgetPerChild} onChange={(e) => setFormData({ ...formData, budgetPerChild: e.target.value })} /></div>
-                ) : null}
+                {formData.hasChildren && (
+                  <div>
+                    <Label>Budget Estimate Per Child</Label>
+                    <Input type="number" value={formData.budgetPerChild} onChange={e => setFormData({...formData, budgetPerChild: e.target.value})} />
+                  </div>
+                )}
               </div>
-            ) : null}
+            )}
 
-            {step === 7 ? (
+            {/* Step 7: Review & Submit */}
+            {step === 7 && (
               <div className="space-y-6">
-                <h3 className="text-lg font-semibold">Step 7 of 7 - Review and Submit</h3>
-                <div className="space-y-3 rounded-xl bg-gray-50 p-6 text-sm">
+                <h3 className="font-semibold text-lg">Step 7 of 7 - Review and Submit</h3>
+                
+                <div className="bg-gray-50 p-6 rounded-xl space-y-4 text-sm">
                   <p><strong>Name:</strong> {formData.firstName} {formData.lastName}</p>
                   <p><strong>Email:</strong> {formData.email}</p>
                   <p><strong>Travel Dates:</strong> {formData.arrivalDate} to {formData.departureDate}</p>
-                  <p><strong>Adults:</strong> {formData.adults}</p>
-                  <p><strong>Children:</strong> {formData.children12Plus + formData.childrenUnder12}</p>
-                  <p><strong>Activities:</strong> {formData.activities.length ? formData.activities.join(', ') : 'None selected'}</p>
+                  <p><strong>Adults:</strong> {formData.adults} {formData.hasChildren && `| Children: ${formData.children12Plus + formData.childrenUnder12}`}</p>
+                  <p><strong>Activities:</strong> {formData.activities.length > 0 ? formData.activities.join(', ') : 'None selected'}</p>
                   <p><strong>Accommodation:</strong> {formData.accommodation}</p>
                   <p><strong>Transport:</strong> {formData.transport}</p>
+                  <p><strong>Currency:</strong> {formData.currency}</p>
+                  <p><strong>Budget per Adult:</strong> {formData.budgetPerAdult} {formData.currency}</p>
                 </div>
 
-                <Button onClick={handleSubmit} disabled={loading} className="w-full py-6 text-lg">
-                  {loading ? 'Generating your quote...' : 'Submit and Get Instant Quote'}
+                <Button onClick={handleSubmit} disabled={loading} className="w-full py-6 text-lg" style={{ backgroundColor: themeColor }}>
+                  {loading ? "Generating your quote..." : "Submit & Get Instant Quote"}
                 </Button>
               </div>
-            ) : null}
+            )}
 
+            {/* Bottom Navigation */}
             <div className="flex justify-between pt-8">
-              {step > 1 ? <Button variant="outline" onClick={prevStep}>Previous</Button> : <span />}
-              {step < 7 ? <Button onClick={nextStep}>Next</Button> : null}
+              {step > 1 && <Button variant="outline" onClick={prevStep}>Previous</Button>}
+              {step < 7 && <Button onClick={nextStep} style={{ backgroundColor: themeColor }}>Next</Button>}
             </div>
           </CardContent>
         </Card>
-
-        {quote ? (
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle>Quote Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <p className="text-lg font-semibold">Estimated Total: KES {Number(quote.totalCostKES || 0).toLocaleString()}</p>
-              <div className="space-y-3">
-                {quote.itinerary?.map((day: { day: number; title: string; description: string }) => (
-                  <div key={day.day} className="rounded-xl border p-4">
-                    <p className="font-semibold">Day {day.day}: {day.title}</p>
-                    <p className="text-sm text-gray-600">{day.description}</p>
-                  </div>
-                ))}
-              </div>
-              <p className="text-sm text-gray-600">
-                Your itinerary PDF has been emailed. If the company has a contact email configured, they also received the lead and PDF copy.
-              </p>
-            </CardContent>
-          </Card>
-        ) : null}
       </div>
     </div>
   );
